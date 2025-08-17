@@ -31,4 +31,8 @@ get_available_legends(split.by = "condition", split.by.method = "border", border
 # Split by variable, using color method
 get_available_legends(split.by = "condition", split.by.method = "color", border = TRUE)
 # Returns: c("size", "color", "alpha")
+
+# Split by variable, using annotation method
+get_available_legends(split.by = "condition", split.by.method = "annotation", border = TRUE)
+# Returns: c("size", "color", "fill")
 }

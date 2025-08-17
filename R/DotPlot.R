@@ -5,10 +5,12 @@
 #' @param group.by Column name in seu@meta.data for grouping cells. Default: NULL (uses current Idents).
 #' @param cells Cell identifiers to be used. Defaults to all cells.
 #' @param split.by Column name in seu@meta.data for splitting the groups. Default: NULL.
-#' @param split.by.method Method for visualizing the split groups. Options are "border" or "color". Default: "border".
+#' @param split.by.method Method for visualizing the split groups. Options are "border", "color", or "annotation". Default: "border".
 #'   - "border": Uses different border colors to represent different split groups, while the fill color represents the expression level.
 #'
 #'   - "color": Uses different dot colors to represent different split groups, while the transparency represents the expression level.
+#'
+#'   - "annotation": Creates a clean main plot with fill color representing expression level, and adds a separate annotation bar to show split groups. This method avoids visual interference between split group colors and expression level colors.
 #' @param nudge_factor Factor to adjust the spacing between split groups. Default: 0.35.
 #' @param color_scheme Color scheme for the plot. When split.by is NULL, or when split.by is specified and split.by.method is "border", this color scheme is used to represent the relative expression level (zscore). Default: 'A'.
 #'    This parameter accepts multiple input formats to provide flexibility in defining color schemes:
@@ -61,7 +63,7 @@
 #' This function creates a dot plot where the size of each dot represents the percentage of cells
 #' expressing the gene, and the color represents the average expression level (corrected expression level, zscore). It supports
 #' grouped features, coordinate flipping, and various customization options. The function also
-#' allows for splitting the visualization by a specified variable, offering two methods of
+#' allows for splitting the visualization by a specified variable, offering three methods of
 #' representation:
 #' 1. Using border colors (split.by.method = "border"): In this method, the fill color of the dots represents
 #'    the expression level, while the border color represents the split group. This allows for easy
@@ -69,6 +71,10 @@
 #' 2. Using dot colors (split.by.method = "color"): In this method, the color of the dots represents
 #'    the split group, while the transparency represents the expression level. This can be useful when
 #'    the focus is on comparing the distribution of split groups across different cell types or genes.
+#' 3. Using annotation bar (split.by.method = "annotation"): In this method, the main plot uses only fill
+#'    color to represent expression levels, creating a clean visualization without border interference.
+#'    Split group information is displayed in a separate annotation bar above (or left of) the main plot.
+#'    This method provides the clearest visual separation between expression levels and grouping information.
 #' @examples
 #' # Basic usage
 #' genes <- VariableFeatures(pbmc)[1:10]
@@ -82,6 +88,9 @@
 #'
 #' # Split visualization using colors instead of borders
 #' DotPlot2(pbmc, features = genes, group.by = "cluster", split.by = "orig.ident", split.by.method = "color", show_grid = FALSE)
+#'
+#' # Split visualization using annotation bar (cleanest visual separation)
+#' DotPlot2(pbmc, features = genes, group.by = "cluster", split.by = "orig.ident", split.by.method = "annotation")
 #'
 #' # Use specific cells only
 #' b_cells <- colnames(pbmc)[pbmc$cluster == "B cell"]
@@ -108,7 +117,7 @@ DotPlot2 <- function(
     split.by.method = "border",
     nudge_factor = 0.35,
     color_scheme = "A",
-    split.by.colors = "bright",
+    split.by.colors = NULL,
     center_color = NULL,
     angle = NULL,
     hjust = NULL,
@@ -129,6 +138,19 @@ DotPlot2 <- function(
   library(ggplot2)
   library(reshape2)
   library(dplyr)
+
+  # Set default colors for split.by.colors based on split.by.method
+  if (is.null(split.by.colors)) {
+    if (!is.null(split.by)) {
+      if (split.by.method == "annotation") {
+        split.by.colors <- "light"
+      } else if (split.by.method == "border") {
+        split.by.colors <- "bright"
+      } else {
+        split.by.colors <- "bright"  # for "color" method
+      }
+    }
+  }
 
   # Validate features first
   features <- validate_features(features, seu)
@@ -180,7 +202,7 @@ DotPlot2 <- function(
     # Only consider the specified cells when determining split levels
     split_values_subset <- seu@meta.data[cells, split.by]
     split_levels <- levels(factor(split_values_subset))
-    
+
     # Handle NULL group.by by using current Idents for combined group
     if (is.null(group.by)) {
       group_values <- as.character(Idents(seu))
@@ -285,6 +307,14 @@ DotPlot2 <- function(
       color_scale <- scale_fill_cont_auto(color_scheme, center_color = center_color, value_range = value_range)
       split_scale <- scale_color_disc_auto(split.by.colors, n_splits)
       color_lab <- lab_value
+    } else if (split.by.method == "annotation") {
+      # For annotation method, use both color (zscore) and fill (split) but make fill invisible
+      p <- ggplot(ToPlot, aes(x = group, y = Var1, size = pct, color = zscore, fill = split)) +
+        geom_point(position = position_nudge(x = ToPlot$nudge))
+      color_scale <- scale_color_cont_auto(color_scheme, center_color = center_color, value_range = value_range)
+      split_scale <- scale_fill_disc_auto(split.by.colors, n_splits)
+      color_lab <- lab_value
+
     } else if (split.by.method == "color") {
       p <- ggplot(ToPlot, aes(x = group, y = Var1, size = pct, color = split, alpha = zscore)) +
         geom_point(position = position_nudge(x = ToPlot$nudge))
@@ -324,6 +354,11 @@ DotPlot2 <- function(
     p <- p + labs(color = split.by) + split_scale
   }
 
+  if (!is.null(split.by) && split.by.method == "annotation") {
+    p <- p + labs(fill = split.by) + split_scale +
+      guides(fill = guide_legend(override.aes = list(alpha = 1, color = NA, size = 4, shape = 22)))
+  }
+
   if (!is.null(feature_groups)) {
     facet_scales <- ifelse(flip, "free_x", "free_y")
     facet_space <- ifelse(free_space, "free", "fixed")
@@ -350,14 +385,14 @@ DotPlot2 <- function(
   # Apply custom legend order if specified
   if (!is.null(legend_order)) {
     available_legends <- get_available_legends(split.by, split.by.method, border)
-    
+
     # Strict validation: must exactly match available_legends
     if (!identical(sort(legend_order), sort(available_legends))) {
-      stop("legend_order must exactly match available legend types: ", 
-           paste(available_legends, collapse = ", "), 
+      stop("legend_order must exactly match available legend types: ",
+           paste(available_legends, collapse = ", "),
            ". You provided: ", paste(legend_order, collapse = ", "))
     }
-    
+
     # Apply user-specified order
     guide_list <- list()
     for (i in seq_along(legend_order)) {
@@ -365,10 +400,16 @@ DotPlot2 <- function(
       if (legend_type == "size") {
         guide_list[[legend_type]] <- guide_legend(order = i)
       } else if (legend_type == "fill") {
-        guide_list[[legend_type]] <- guide_colorbar(order = i)
+        if (!is.null(split.by) && split.by.method == "annotation") {
+          guide_list[[legend_type]] <- guide_legend(order = i, override.aes = list(alpha = 1, color = NA, size = 4, shape = 22))
+        } else {
+          guide_list[[legend_type]] <- guide_colorbar(order = i)
+        }
       } else if (legend_type == "color") {
         if (is.null(split.by)) {
           guide_list[[legend_type]] <- guide_colorbar(order = i)
+        } else if (split.by.method == "annotation") {
+          guide_list[[legend_type]] <- guide_colorbar(order = i)  # annotation method uses continuous color
         } else {
           guide_list[[legend_type]] <- guide_legend(order = i)
         }
@@ -377,6 +418,59 @@ DotPlot2 <- function(
       }
     }
     p <- p + do.call(guides, guide_list)
+  }
+
+  # Create annotation bar if needed
+  if (!is.null(split.by) && split.by.method == "annotation") {
+    library(cowplot)
+
+    # Create annotation bar data 
+    annotation_data <- ToPlot %>%
+      dplyr::select(group, split, nudge) %>%
+      dplyr::distinct() %>%
+      dplyr::arrange(group, split)
+
+    # Calculate tile width based on nudge spacing
+    # For n_splits, the spacing between adjacent bars is nudge_factor / (n_splits - 1)
+    if (n_splits > 1) {
+      tile_width <- nudge_factor / (n_splits - 1)
+    } else {
+      tile_width <- nudge_factor  # fallback for single split
+    }
+
+    # Create annotation bar plot
+    if (flip) {
+      # Annotation bar on the left for flipped plots
+      anno_plot <- ggplot(annotation_data, aes(x = 0.5, y = group, fill = split)) +
+        geom_tile(width = 1, height = tile_width, position = position_nudge(y = annotation_data$nudge)) +
+        scale_fill_disc_auto(split.by.colors, n_splits) +
+        labs(fill = split.by) +
+        theme_void() +
+        theme(
+          legend.position = "none",
+          plot.margin = margin(0, 2, 0, 0)
+        )
+
+      # Combine plots: annotation bar on left, main plot on right
+      combined_plot <- plot_grid(anno_plot, p, ncol = 2, rel_widths = c(0.03, 1), align = "h")
+
+    } else {
+      # Annotation bar on top for normal plots
+      anno_plot <- ggplot(annotation_data, aes(x = group, y = 0.5, fill = split)) +
+        geom_tile(width = tile_width, height = 1, position = position_nudge(x = annotation_data$nudge)) +
+        scale_fill_disc_auto(split.by.colors, n_splits) +
+        labs(fill = split.by) +
+        theme_void() +
+        theme(
+          legend.position = "none",
+          plot.margin = margin(0, 0, 2, 0)
+        )
+
+      # Combine plots: annotation bar on top, main plot on bottom
+      combined_plot <- plot_grid(anno_plot, p, nrow = 2, rel_heights = c(0.05, 1), align = "v")
+    }
+
+    return(combined_plot)
   }
 
   return(p)
@@ -474,6 +568,10 @@ validate_features <- function(features, seu) {
 #' # Split by variable, using color method
 #' get_available_legends(split.by = "condition", split.by.method = "color", border = TRUE)
 #' # Returns: c("size", "color", "alpha")
+#'
+#' # Split by variable, using annotation method
+#' get_available_legends(split.by = "condition", split.by.method = "annotation", border = TRUE)
+#' # Returns: c("size", "color", "fill")
 #' @export
 get_available_legends <- function(split.by, split.by.method, border) {
   if (is.null(split.by)) {
@@ -487,6 +585,8 @@ get_available_legends <- function(split.by, split.by.method, border) {
       return(c("size", "fill", "color"))
     } else if (split.by.method == "color") {
       return(c("size", "color", "alpha"))
+    } else if (split.by.method == "annotation") {
+      return(c("size", "color", "fill"))
     }
   }
 }

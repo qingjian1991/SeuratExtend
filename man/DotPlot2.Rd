@@ -13,7 +13,7 @@ DotPlot2(
   split.by.method = "border",
   nudge_factor = 0.35,
   color_scheme = "A",
-  split.by.colors = "bright",
+  split.by.colors = NULL,
   center_color = NULL,
   angle = NULL,
   hjust = NULL,
@@ -43,10 +43,12 @@ DotPlot2(
 
 \item{split.by}{Column name in seu@meta.data for splitting the groups. Default: NULL.}
 
-\item{split.by.method}{Method for visualizing the split groups. Options are "border" or "color". Default: "border".
+\item{split.by.method}{Method for visualizing the split groups. Options are "border", "color", or "annotation". Default: "border".
   - "border": Uses different border colors to represent different split groups, while the fill color represents the expression level.
 
-  - "color": Uses different dot colors to represent different split groups, while the transparency represents the expression level.}
+  - "color": Uses different dot colors to represent different split groups, while the transparency represents the expression level.
+
+  - "annotation": Creates a clean main plot with fill color representing expression level, and adds a separate annotation bar to show split groups. This method avoids visual interference between split group colors and expression level colors.}
 
 \item{nudge_factor}{Factor to adjust the spacing between split groups. Default: 0.35.}
 
@@ -122,7 +124,7 @@ Creates an enhanced dot plot for visualizing gene expression across different ce
 This function creates a dot plot where the size of each dot represents the percentage of cells
 expressing the gene, and the color represents the average expression level (corrected expression level, zscore). It supports
 grouped features, coordinate flipping, and various customization options. The function also
-allows for splitting the visualization by a specified variable, offering two methods of
+allows for splitting the visualization by a specified variable, offering three methods of
 representation:
 1. Using border colors (split.by.method = "border"): In this method, the fill color of the dots represents
    the expression level, while the border color represents the split group. This allows for easy
@@ -130,6 +132,10 @@ representation:
 2. Using dot colors (split.by.method = "color"): In this method, the color of the dots represents
    the split group, while the transparency represents the expression level. This can be useful when
    the focus is on comparing the distribution of split groups across different cell types or genes.
+3. Using annotation bar (split.by.method = "annotation"): In this method, the main plot uses only fill
+   color to represent expression levels, creating a clean visualization without border interference.
+   Split group information is displayed in a separate annotation bar above (or left of) the main plot.
+   This method provides the clearest visual separation between expression levels and grouping information.
 }
 \examples{
 # Basic usage
@@ -144,6 +150,9 @@ DotPlot2(pbmc, features = genes, group.by = "cluster", split.by = "orig.ident", 
 
 # Split visualization using colors instead of borders
 DotPlot2(pbmc, features = genes, group.by = "cluster", split.by = "orig.ident", split.by.method = "color", show_grid = FALSE)
+
+# Split visualization using annotation bar (cleanest visual separation)
+DotPlot2(pbmc, features = genes, group.by = "cluster", split.by = "orig.ident", split.by.method = "annotation")
 
 # Use specific cells only
 b_cells <- colnames(pbmc)[pbmc$cluster == "B cell"]
